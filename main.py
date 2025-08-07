@@ -45,7 +45,7 @@ def get_latest_tweet(user_id):
         response = requests.get(url, headers=headers)
         if response.status_code == 429:
             logging.warning("Rate limit exceeded. Waiting 15 minutes...")
-            time.sleep(900)
+            time.sleep(905)  # Wait for 15 minutes + 5 seconds buffer
             return None
         response.raise_for_status()
         data = response.json()
@@ -82,7 +82,8 @@ def tweet_monitor_worker():
             last_tweet_id = latest_tweet["id"]
         else:
             logging.debug("No new tweet found.")
-        time.sleep(900)
+        # Sleep for 15 minutes + 5 seconds buffer (905 seconds) to avoid hitting rate limits
+        time.sleep(905)
 
 # Flask app for health check endpoint
 app = Flask(__name__)
