@@ -73,6 +73,10 @@ def tweet_monitor_worker():
 # Flask app for health check endpoint
 app = Flask(__name__)
 
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"status": "ok"}), 200
+
 @app.route("/health", methods=["GET"])
 def health_check():
     return jsonify({"status": "ok"}), 200
