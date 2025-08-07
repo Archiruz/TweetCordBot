@@ -81,5 +81,6 @@ if __name__ == "__main__":
     # Start tweet monitor in a background thread
     t = threading.Thread(target=tweet_monitor_worker, daemon=True)
     t.start()
-    # Start Flask app
-    app.run(host="0.0.0.0", port=8080)
+    # Start Flask app on the port specified by the environment variable (default 8080)
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
