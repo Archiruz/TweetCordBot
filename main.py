@@ -3,7 +3,16 @@ import time
 from dotenv import load_dotenv
 import os
 import threading
+import logging
 from flask import Flask, jsonify
+
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,7 +35,7 @@ def get_user_id(username):
         data = response.json()
         return data["data"]["id"]
     except Exception as e:
-        print(f"Error fetching user ID: {e}")
+        logging.error(f"Error fetching user ID: {e}")
     return None
 
 def get_latest_tweet(user_id):
@@ -35,7 +44,7 @@ def get_latest_tweet(user_id):
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 429:
-            print("Rate limit exceeded. Waiting 15 minutes...")
+            logging.warning("Rate limit exceeded. Waiting 15 minutes...")
             time.sleep(900)
             return None
         response.raise_for_status()
@@ -43,7 +52,7 @@ def get_latest_tweet(user_id):
         if "data" in data and len(data["data"]) > 0:
             return data["data"][0]
     except Exception as e:
-        print(f"Error fetching tweets: {e}")
+        logging.error(f"Error fetching tweets: {e}")
     return None
 
 def send_to_discord(webhook_url, tweet, username):
@@ -54,20 +63,25 @@ def send_to_discord(webhook_url, tweet, username):
     try:
         response = requests.post(webhook_url, json=message)
         response.raise_for_status()
+        logging.info(f"Sent tweet {tweet['id']} to Discord.")
     except requests.exceptions.RequestException as e:
-        print(f"Error sending to Discord: {e}")
+        logging.error(f"Error sending to Discord: {e}")
 
 def tweet_monitor_worker():
     global last_tweet_id
     user_id = get_user_id(TWITTER_USERNAME)
     if not user_id:
-        print("Could not fetch user ID. Exiting tweet monitor thread.")
+        logging.error("Could not fetch user ID. Exiting tweet monitor thread.")
         return
+    logging.info(f"Starting tweet monitor for @{TWITTER_USERNAME} (user_id={user_id})")
     while True:
         latest_tweet = get_latest_tweet(user_id)
         if latest_tweet and latest_tweet["id"] != last_tweet_id:
+            logging.info(f"New tweet detected: {latest_tweet['id']}")
             send_to_discord(DISCORD_WEBHOOK_URL, latest_tweet, TWITTER_USERNAME)
             last_tweet_id = latest_tweet["id"]
+        else:
+            logging.debug("No new tweet found.")
         time.sleep(900)
 
 # Flask app for health check endpoint
@@ -82,9 +96,11 @@ def health_check():
     return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
+    logging.info("Starting TweetCordBot...")
     # Start tweet monitor in a background thread
     t = threading.Thread(target=tweet_monitor_worker, daemon=True)
     t.start()
     # Start Flask app on the port specified by the environment variable (default 8080)
     port = int(os.environ.get("PORT", 8000))
+    logging.info(f"Flask app running on port {port}")
     app.run(host="0.0.0.0", port=port)
