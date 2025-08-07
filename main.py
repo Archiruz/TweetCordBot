@@ -95,11 +95,13 @@ def root():
 def health_check():
     return jsonify({"status": "ok"}), 200
 
+
+# Always start the tweet monitor thread, even when run by Gunicorn or other WSGI servers
+logging.info("Starting TweetCordBot tweet monitor thread...")
+t = threading.Thread(target=tweet_monitor_worker, daemon=True)
+t.start()
+
 if __name__ == "__main__":
-    logging.info("Starting TweetCordBot...")
-    # Start tweet monitor in a background thread
-    t = threading.Thread(target=tweet_monitor_worker, daemon=True)
-    t.start()
     # Start Flask app on the port specified by the environment variable (default 8080)
     port = int(os.environ.get("PORT", 8000))
     logging.info(f"Flask app running on port {port}")
