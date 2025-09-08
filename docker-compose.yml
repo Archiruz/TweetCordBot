@@ -1,0 +1,20 @@
+services:
+  tweetcord-bot:
+    build: .
+    container_name: tweetcord-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Mount logs directory for persistence (optional)
+      - ./logs:/app/logs
+    environment:
+      # Override any environment variables here if needed
+      - TZ=UTC
+      # Alpine Linux specific optimizations
+      - PYTHONUNBUFFERED=1
+    # Uncomment the following lines if you want to run in development mode
+    # with live code reloading
+    # volumes:
+    #   - .:/app
+    # command: python -m pip install --upgrade pip && python main.py

@@ -2,16 +2,14 @@ import requests
 import time
 from dotenv import load_dotenv
 import os
-import threading
 import logging
-from flask import Flask, jsonify
 
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 
 # Load environment variables from .env file
@@ -26,6 +24,7 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
 last_tweet_id = None
 
+
 def get_user_id(username):
     url = f"https://api.twitter.com/2/users/by/username/{username}"
     headers = {"Authorization": f"Bearer {BEARER_TOKEN}"}
@@ -38,8 +37,12 @@ def get_user_id(username):
         logging.error(f"Error fetching user ID: {e}")
     return None
 
-def get_latest_tweet(user_id):
-    url = f"https://api.twitter.com/2/users/{user_id}/tweets?max_results=5&exclude=retweets,replies&tweet.fields=created_at"
+
+def get_recent_tweets(user_id):
+    url = (
+        f"https://api.twitter.com/2/users/{user_id}/tweets?"
+        f"max_results=5&exclude=retweets,replies&tweet.fields=created_at"
+    )
     headers = {"Authorization": f"Bearer {BEARER_TOKEN}"}
     try:
         response = requests.get(url, headers=headers)
@@ -50,16 +53,15 @@ def get_latest_tweet(user_id):
         response.raise_for_status()
         data = response.json()
         if "data" in data and len(data["data"]) > 0:
-            return data["data"][0]
+            return data["data"]
     except Exception as e:
         logging.error(f"Error fetching tweets: {e}")
     return None
 
+
 def send_to_discord(webhook_url, tweet, username):
     tweet_url = f"https://fxtwitter.com/{username}/status/{tweet['id']}"
-    message = {
-        "content": f"New tweet from @{username}:\n{tweet_url}"
-    }
+    message = {"content": f"New tweet from @{username}:\n{tweet_url}"}
     try:
         response = requests.post(webhook_url, json=message)
         response.raise_for_status()
@@ -67,43 +69,44 @@ def send_to_discord(webhook_url, tweet, username):
     except requests.exceptions.RequestException as e:
         logging.error(f"Error sending to Discord: {e}")
 
+
 def tweet_monitor_worker():
     global last_tweet_id
     user_id = get_user_id(TWITTER_USERNAME)
     if not user_id:
-        logging.error("Could not fetch user ID. Exiting tweet monitor thread.")
+        logging.error("Could not fetch user ID. Exiting tweet monitor.")
         return
     logging.info(f"Starting tweet monitor for @{TWITTER_USERNAME} (user_id={user_id})")
+
     while True:
-        latest_tweet = get_latest_tweet(user_id)
-        if latest_tweet and latest_tweet["id"] != last_tweet_id:
-            logging.info(f"New tweet detected: {latest_tweet['id']}")
-            send_to_discord(DISCORD_WEBHOOK_URL, latest_tweet, TWITTER_USERNAME)
-            last_tweet_id = latest_tweet["id"]
+        tweets = get_recent_tweets(user_id)
+        if tweets:
+            new_tweets = []
+            for tweet in tweets:
+                if tweet["id"] != last_tweet_id:
+                    new_tweets.append(tweet)
+                else:
+                    # Stop at the first tweet we've already seen
+                    break
+
+            if new_tweets:
+                logging.info(f"Found {len(new_tweets)} new tweets")
+                # Send oldest first
+                for tweet in reversed(new_tweets):
+                    logging.info(f"New tweet detected: {tweet['id']}")
+                    send_to_discord(DISCORD_WEBHOOK_URL, tweet, TWITTER_USERNAME)
+                # Update to the most recent tweet
+                last_tweet_id = tweets[0]["id"]
+            else:
+                logging.debug("No new tweets found.")
         else:
-            logging.debug("No new tweet found.")
-        # Sleep for 15 minutes + 5 seconds buffer (905 seconds) to avoid hitting rate limits
-        time.sleep(905)
+            logging.debug("No tweets found.")
 
-# Flask app for health check endpoint
-app = Flask(__name__)
+        # Sleep for 8 hours (28800 seconds)
+        logging.info("Sleeping for 8 hours...")
+        time.sleep(28800)
 
-@app.route("/", methods=["GET"])
-def root():
-    return jsonify({"status": "ok"}), 200
-
-@app.route("/health", methods=["GET"])
-def health_check():
-    return jsonify({"status": "ok"}), 200
-
-
-# Always start the tweet monitor thread, even when run by Gunicorn or other WSGI servers
-logging.info("Starting TweetCordBot tweet monitor thread...")
-t = threading.Thread(target=tweet_monitor_worker, daemon=True)
-t.start()
 
 if __name__ == "__main__":
-    # Start Flask app on the port specified by the environment variable (default 8080)
-    port = int(os.environ.get("PORT", 8000))
-    logging.info(f"Flask app running on port {port}")
-    app.run(host="0.0.0.0", port=port)
+    logging.info("Starting TweetCordBot background worker...")
+    tweet_monitor_worker()
