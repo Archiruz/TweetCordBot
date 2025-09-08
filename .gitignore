@@ -135,3 +135,4 @@ Desktop.ini
 # Other
 *.swp
 *.swo
+.cursorignore

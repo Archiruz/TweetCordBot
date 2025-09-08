@@ -56,6 +56,55 @@ docker-compose logs -f
 docker-compose down
 ```
 
+### Using Pre-built Images from GitHub Container Registry
+
+If you prefer to use the pre-built image from GitHub Container Registry:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/your-username/tweetcordbot:latest
+
+# Run the container
+docker run -d \
+  --name tweetcord-bot \
+  --env-file .env \
+  --restart unless-stopped \
+  ghcr.io/your-username/tweetcordbot:latest
+```
+
+Replace `your-username` with your GitHub username.
+
+## GitHub Actions CI/CD
+
+This repository includes a GitHub Actions workflow that automatically builds and pushes Docker images to GitHub Container Registry (ghcr.io).
+
+### Workflow Features
+
+- **Automatic builds** on push to main/master branches
+- **Tag-based releases** (e.g., `v1.0.0`)
+- **Multi-platform builds** (linux/amd64, linux/arm64)
+- **Pull request validation** (builds but doesn't push)
+- **Manual trigger** support via GitHub Actions UI
+- **Build caching** for faster subsequent builds
+
+### How to Use
+
+1. **Push to main branch**: Automatically builds and pushes `latest` tag
+2. **Create a release tag**: 
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+3. **Manual trigger**: Go to Actions tab → "Build and Push Docker Image" → "Run workflow"
+
+### Image Tags
+
+The workflow creates multiple tags:
+- `latest` - Latest build from main branch
+- `main` - Latest build from main branch
+- `v1.0.0` - Specific version tags
+- `v1.0` - Major.minor version tags
+
 ### Development Mode
 
 For development with live code reloading, uncomment the development volumes in `docker-compose.yml`:
