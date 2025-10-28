@@ -3,6 +3,7 @@ import time
 from dotenv import load_dotenv
 import os
 import logging
+from pathlib import Path
 
 
 # Configure logging
@@ -21,8 +22,46 @@ BEARER_TOKEN = os.getenv("BEARER_TOKEN")
 TWITTER_USERNAME = os.getenv("TWITTER_USERNAME")
 # Discord webhook URL (with thread ID if applicable)
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+# Run mode: "continuous" (default, 8-hour loop) or "once" (single run for CronJob)
+RUN_MODE = os.getenv("RUN_MODE", "continuous")
+
+# State file path for persistent storage
+STATE_DIR = Path("logs")
+STATE_FILE = STATE_DIR / "last_tweet_id.txt"
 
 last_tweet_id = None
+
+
+def load_last_tweet_id():
+    """Load the last tweet ID from persistent storage."""
+    global last_tweet_id
+    if STATE_FILE.exists():
+        try:
+            with open(STATE_FILE, "r") as f:
+                last_tweet_id = f.read().strip()
+                if last_tweet_id:
+                    logging.info(f"Loaded last tweet ID from state: {last_tweet_id}")
+                else:
+                    last_tweet_id = None
+        except Exception as e:
+            logging.error(f"Error loading state file: {e}")
+            last_tweet_id = None
+    else:
+        logging.info("No state file found. Starting fresh.")
+        last_tweet_id = None
+
+
+def save_last_tweet_id(tweet_id):
+    """Save the last tweet ID to persistent storage."""
+    global last_tweet_id
+    try:
+        STATE_DIR.mkdir(exist_ok=True)
+        with open(STATE_FILE, "w") as f:
+            f.write(tweet_id)
+        last_tweet_id = tweet_id
+        logging.info(f"Saved last tweet ID to state: {tweet_id}")
+    except Exception as e:
+        logging.error(f"Error saving state file: {e}")
 
 
 def get_user_id(username):
@@ -72,6 +111,10 @@ def send_to_discord(webhook_url, tweet, username):
 
 def tweet_monitor_worker():
     global last_tweet_id
+    
+    # Load previous state
+    load_last_tweet_id()
+    
     user_id = get_user_id(TWITTER_USERNAME)
     if not user_id:
         logging.error("Could not fetch user ID. Exiting tweet monitor.")
@@ -95,12 +138,17 @@ def tweet_monitor_worker():
                 for tweet in reversed(new_tweets):
                     logging.info(f"New tweet detected: {tweet['id']}")
                     send_to_discord(DISCORD_WEBHOOK_URL, tweet, TWITTER_USERNAME)
-                # Update to the most recent tweet
-                last_tweet_id = tweets[0]["id"]
+                # Update to the most recent tweet and save state
+                save_last_tweet_id(tweets[0]["id"])
             else:
-                logging.debug("No new tweets found.")
+                logging.info("No new tweets found.")
         else:
-            logging.debug("No tweets found.")
+            logging.info("No tweets found.")
+
+        # Check run mode - if "once", exit after single check
+        if RUN_MODE == "once":
+            logging.info("Run mode is 'once'. Exiting after single check.")
+            break
 
         # Sleep for 8 hours (28800 seconds)
         logging.info("Sleeping for 8 hours...")
@@ -108,5 +156,5 @@ def tweet_monitor_worker():
 
 
 if __name__ == "__main__":
-    logging.info("Starting TweetCordBot background worker...")
+    logging.info(f"Starting TweetCordBot background worker (mode: {RUN_MODE})...")
     tweet_monitor_worker()

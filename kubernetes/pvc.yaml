@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tweetcordbot-state-pvc
+  namespace: default  # Change to your namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi  # Very small - just storing a single tweet ID
+  # Optional: Specify storage class if you have one
+  # storageClassName: local-path  # Common for mini PC clusters

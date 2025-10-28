@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tweetcordbot-cronjob
+  namespace: default  # Change to your namespace
+spec:
+  # Run every 8 hours
+  schedule: "0 */8 * * *"
+  # Alternative schedules:
+  # Every 4 hours: "0 */4 * * *"
+  # Every 6 hours: "0 */6 * * *"
+  # Every 12 hours: "0 */12 * * *"
+  
+  # Keep last 3 successful and 1 failed job for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  jobTemplate:
+    spec:
+      # Don't retry failed jobs automatically - next cron run will try again
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: tweetcordbot
+        spec:
+          restartPolicy: Never
+          
+          containers:
+          - name: tweetcordbot
+            image: ghcr.io/archiruz/tweetcordbot:latest
+            imagePullPolicy: Always
+            
+            env:
+            - name: RUN_MODE
+              value: "once"  # Critical: Run once and exit
+            - name: BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tweetcordbot-secrets
+                  key: bearer-token
+            - name: TWITTER_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: tweetcordbot-secrets
+                  key: twitter-username
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tweetcordbot-secrets
+                  key: discord-webhook-url
+            
+            volumeMounts:
+            - name: state-storage
+              mountPath: /app/logs
+            
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "50m"
+              limits:
+                memory: "128Mi"
+                cpu: "200m"
+          
+          volumes:
+          - name: state-storage
+            persistentVolumeClaim:
+              claimName: tweetcordbot-state-pvc

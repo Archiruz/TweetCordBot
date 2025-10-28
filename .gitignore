@@ -73,6 +73,10 @@ coverage.xml
 *.log
 local_settings.py
 
+# TweetCordBot state files
+logs/
+last_tweet_id.txt
+
 # Flask stuff:
 instance/
 .webassets-cache

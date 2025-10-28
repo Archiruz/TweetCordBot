@@ -9,6 +9,8 @@ A background worker that monitors a Twitter account and sends new tweets to a Di
 - Sends new tweets to Discord via webhook
 - Runs as a containerized background service
 - Prevents duplicate tweet notifications
+- **Persistent state tracking** - survives container restarts
+- **Dual deployment modes** - continuous or CronJob-based
 
 ## Setup
 
@@ -25,6 +27,11 @@ TWITTER_USERNAME=username_to_monitor
 
 # Discord Webhook URL
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_webhook_url_here
+
+# Run Mode (optional, defaults to "continuous")
+# - "continuous": Traditional mode with 8-hour sleep loop (for Docker Compose)
+# - "once": Run a single check and exit (for Kubernetes CronJob)
+RUN_MODE=continuous
 ```
 
 ### 2. Twitter API Setup
@@ -131,11 +138,64 @@ command: python -m pip install --upgrade pip && python main.py
 
 ## How It Works
 
+### Persistent State Tracking
+
+The bot now maintains state across restarts using a file-based system:
+- Last seen tweet ID is stored in `logs/last_tweet_id.txt`
+- On startup, the bot loads the previous state
+- Docker Compose automatically mounts `./logs` directory for persistence
+- **No more duplicate tweets after container restarts!**
+
+### Monitoring Flow
+
 1. The bot fetches the user ID for the specified Twitter username
-2. Every 8 hours, it fetches the 5 most recent tweets from the account
-3. It compares new tweets against the last seen tweet ID
-4. Any new tweets are sent to Discord in chronological order
-5. The bot sleeps for 8 hours before the next check
+2. Loads the last seen tweet ID from `logs/last_tweet_id.txt` (if exists)
+3. Every 8 hours (or on single run), it fetches the 5 most recent tweets
+4. Compares new tweets against the last seen tweet ID
+5. Any new tweets are sent to Discord in chronological order
+6. Saves the latest tweet ID to disk
+7. In continuous mode, sleeps for 8 hours before the next check
+
+## Deployment Options
+
+### Option 1: Docker Compose (Continuous Mode)
+
+Best for simple deployments or single-host environments:
+
+```bash
+docker-compose up -d
+```
+
+The bot runs continuously with 8-hour sleep cycles. State persists in `./logs` directory.
+
+### Option 2: Kubernetes CronJob (Recommended for Production)
+
+Best for Kubernetes clusters - runs on a schedule without keeping a pod alive:
+
+**Advantages:**
+- No wasted resources during sleep periods
+- Kubernetes-native scheduling
+- Automatic cleanup of old jobs
+- Better for cluster restarts
+
+**See full deployment guide:** [`kubernetes/DEPLOYMENT.md`](kubernetes/DEPLOYMENT.md)
+
+**Quick Start:**
+```bash
+# Create secrets
+kubectl create secret generic tweetcordbot-secrets \
+  --from-literal=bearer-token="YOUR_TOKEN" \
+  --from-literal=twitter-username="YOUR_USERNAME" \
+  --from-literal=discord-webhook-url="YOUR_WEBHOOK_URL"
+
+# Deploy
+kubectl apply -f kubernetes/pvc.yaml
+kubectl apply -f kubernetes/cronjob.yaml
+
+# Monitor
+kubectl get cronjobs
+kubectl logs -l app=tweetcordbot --tail=50
+```
 
 ## Logs
 
@@ -162,15 +222,22 @@ docker-compose logs -f tweetcord-bot
 
 4. **User Not Found**: Make sure the Twitter username exists and is spelled correctly (without @ symbol).
 
+5. **Duplicate tweets after restart**: 
+   - Ensure the `logs/` directory is properly mounted (Docker Compose does this automatically)
+   - For Kubernetes, verify PVC is bound: `kubectl get pvc`
+   - Check state file exists: `docker exec tweetcord-bot cat /app/logs/last_tweet_id.txt`
+
 ### Checking Status
 
 ```bash
-# Check if container is running
+# Docker Compose
 docker-compose ps
-
-# View recent logs
 docker-compose logs --tail=50 tweetcord-bot
-
-# Restart the service
 docker-compose restart
+
+# Kubernetes CronJob
+kubectl get cronjobs
+kubectl get jobs --sort-by=.metadata.creationTimestamp
+kubectl logs -l app=tweetcordbot --tail=50
+kubectl create job --from=cronjob/tweetcordbot-cronjob manual-test
 ```

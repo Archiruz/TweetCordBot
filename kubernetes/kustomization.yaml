@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: default
+
+resources:
+  - pvc.yaml
+  - cronjob.yaml
+
+# Uncomment to use the example secrets file (not recommended for production)
+# - secrets.yaml.example
+
+# Common labels applied to all resources
+commonLabels:
+  app: tweetcordbot
+  managed-by: kustomize
+
+# Configuration to easily customize the deployment
+configMapGenerator: []
+
+secretGenerator: []
+
+# Images to replace (useful for testing different versions)
+images:
+  - name: ghcr.io/archiruz/tweetcordbot
+    newTag: latest
+
+# Patches (optional customizations)
+# patchesStrategicMerge:
+#   - custom-schedule.yaml
+
+# Example: Change schedule without editing cronjob.yaml
+# Create custom-schedule.yaml:
+# apiVersion: batch/v1
+# kind: CronJob
+# metadata:
+#   name: tweetcordbot-cronjob
+# spec:
+#   schedule: "0 */4 * * *"  # Every 4 hours
